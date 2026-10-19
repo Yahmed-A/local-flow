@@ -7,6 +7,7 @@ tap again to stop. Esc cancels.
 import json
 import os
 import re
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -18,7 +19,7 @@ from bubble import Bubble
 from formatting import format_text, paragraphs
 import sounddevice as sd
 import Quartz
-from AppKit import NSApplication, NSPasteboard, NSPasteboardItem, NSSound
+from AppKit import NSPasteboard, NSPasteboardItem, NSSound
 from ApplicationServices import AXIsProcessTrustedWithOptions
 from CoreFoundation import (CFRunLoopAddSource, CFRunLoopGetMain,
                             kCFRunLoopCommonModes)
@@ -58,6 +59,11 @@ FILLERS = re.compile(r"\b(?:um+|uh+|erm+|uhm+)\b[,.]?\s*", re.I)
 # A code-switched example steers Whisper to keep each language in its own script
 MIXED_PROMPT = ("السلام عليكم ورحمة الله وبركاته. قال الأستاذ: today we read باب الفاعل, and he said "
                 "إن شاء الله we'll finish the book.")
+SIGNOFF_DIALOG = """on run argv
+    activate
+    set r to display dialog "Your name is added on its own line after sign-offs like Kind regards or JazakAllahu khayran in longer messages, unless you say a name. Leave empty to turn off." default answer (item 1 of argv) with title "Sign-off name" buttons {"Cancel", "Save"} default button "Save"
+    return text returned of r
+end run"""
 HALLUCINATIONS = {"thank you.", "thanks for watching!", "thank you for watching.",
                   "you", ".", "bye.", "subtitles by the amara.org community"}
 
@@ -244,16 +250,12 @@ class LocalFlow(rumps.App):
         self.save()
 
     def set_signoff_name(self, _):
-        w = rumps.Window(
-            message="Added on its own line after sign-offs like \"Kind regards\" or "
-                    "\"JazakAllahu khayran\" in longer messages, unless you say a name. "
-                    "Leave empty to turn off.",
-            title="Sign-off name", default_text=self.cfg.get("signoff_name", ""),
-            ok="Save", cancel="Cancel", dimensions=(260, 24))
-        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)  # bring dialog to front
-        r = w.run()
-        if r.clicked:
-            self.cfg["signoff_name"] = r.text.strip()
+        # A background app can't take keyboard focus, so ask through osascript,
+        # which macOS brings to the front with a working text field.
+        r = subprocess.run(["osascript", "-e", SIGNOFF_DIALOG, self.cfg.get("signoff_name", "")],
+                           capture_output=True, text=True)
+        if r.returncode == 0:  # not cancelled
+            self.cfg["signoff_name"] = r.stdout.strip()
             self.save()
 
     def toggle_format(self, _):
