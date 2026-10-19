@@ -18,7 +18,7 @@ from bubble import Bubble
 from formatting import format_text, paragraphs
 import sounddevice as sd
 import Quartz
-from AppKit import NSPasteboard, NSPasteboardItem, NSSound
+from AppKit import NSApplication, NSPasteboard, NSPasteboardItem, NSSound
 from ApplicationServices import AXIsProcessTrustedWithOptions
 from CoreFoundation import (CFRunLoopAddSource, CFRunLoopGetMain,
                             kCFRunLoopCommonModes)
@@ -37,6 +37,7 @@ DEFAULT_CONFIG = {
     "restore_clipboard": True,
     "bubble": True,
     "smart_format": True,
+    "signoff_name": "",
 }
 DEFAULT_VOCAB = """Jaryah, Kube, Kube Publishing, Deckhand, Manzil, Qur'an, hadith, ayah,
 surah, tafsir, nahw, sarf, Allah, Muhammad, salallahu alayhi wa sallam, InshaAllah,
@@ -187,6 +188,7 @@ class LocalFlow(rumps.App):
         self.last = rumps.MenuItem("Paste last dictation again", callback=self.repaste)
         self.bubble_item = rumps.MenuItem("Show floating bubble", callback=self.toggle_bubble)
         self.format_item = rumps.MenuItem("Smart paragraphs & direction", callback=self.toggle_format)
+        self.name_item = rumps.MenuItem("Sign-off name…", callback=self.set_signoff_name)
         self.bubble = Bubble()
         self.last_text = ""
         self.menu = [
@@ -197,6 +199,7 @@ class LocalFlow(rumps.App):
             self.last,
             self.bubble_item,
             self.format_item,
+            self.name_item,
             rumps.MenuItem("Edit vocabulary…", callback=lambda _: os.system(f'open -t "{VOCAB_FILE}"')),
             rumps.MenuItem("Open history", callback=lambda _: os.system(f'open -t "{HISTORY_FILE}"')),
             None,
@@ -216,6 +219,8 @@ class LocalFlow(rumps.App):
             it.state = k == self.cfg["hotkey"]
         self.bubble_item.state = self.cfg.get("bubble", True)
         self.format_item.state = self.cfg.get("smart_format", True)
+        name = self.cfg.get("signoff_name", "")
+        self.name_item.title = f"Sign-off name: {name}…" if name else "Sign-off name…"
 
     def save(self):
         CONFIG_FILE.write_text(json.dumps(self.cfg, indent=2))
@@ -237,6 +242,19 @@ class LocalFlow(rumps.App):
     def toggle_bubble(self, _):
         self.cfg["bubble"] = not self.cfg["bubble"]
         self.save()
+
+    def set_signoff_name(self, _):
+        w = rumps.Window(
+            message="Added on its own line after sign-offs like \"Kind regards\" or "
+                    "\"JazakAllahu khayran\" in longer messages, unless you say a name. "
+                    "Leave empty to turn off.",
+            title="Sign-off name", default_text=self.cfg.get("signoff_name", ""),
+            ok="Save", cancel="Cancel", dimensions=(260, 24))
+        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)  # bring dialog to front
+        r = w.run()
+        if r.clicked:
+            self.cfg["signoff_name"] = r.text.strip()
+            self.save()
 
     def toggle_format(self, _):
         self.cfg["smart_format"] = not self.cfg.get("smart_format", True)
@@ -350,7 +368,7 @@ class LocalFlow(rumps.App):
             if self.cfg["language"] != "en":
                 text = to_arabic(text)
             if smart and text:
-                text = format_text(text)
+                text = format_text(text, self.cfg.get("signoff_name", ""))
             if text:
                 self.last_text = text
                 self.log(text)

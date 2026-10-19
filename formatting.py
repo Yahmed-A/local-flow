@@ -114,7 +114,7 @@ def split_greeting(text):
     return head.rstrip() + "\n\n" + _cap(body)
 
 
-def split_closing(text):
+def split_closing(text, name=""):
     paras = text.split("\n\n")
     last = paras[-1]
     sents = SENTENCES.split(last)
@@ -133,6 +133,9 @@ def split_closing(text):
     m = re.match(r"^(.*?[,،])\s*([^\s,.]+(?: [^\s,.]+)?)[.!]?$", tail)
     if m and not CLOSING.match(m.group(2)) and _words(m.group(1)) <= 3:
         tail = m.group(1) + "\n" + m.group(2)
+    elif name:  # no name spoken: add the saved sign-off name
+        tail = tail.rstrip(".!")
+        tail += ("\n" if ARABIC.search(tail[-1:]) else ",\n") + name
     before = last[: last.rfind(sents[-k])].strip()
     if len(paras) == 1 and _words(before) < 12:
         return text  # short chat message: "Can you call me? Thanks." stays as is
@@ -163,8 +166,8 @@ def fix_direction(text):
     return "\n".join(out)
 
 
-def format_text(text):
+def format_text(text, signoff_name=""):
     text = apply_commands(text)
     text = split_greeting(text)
-    text = split_closing(text)
+    text = split_closing(text, signoff_name.strip())
     return fix_direction(text)

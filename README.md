@@ -136,6 +136,8 @@ Local Flow decides where to press Enter for you:
 
 Short chat messages ("Hi Sarah, are you free?", "Can you call me? Thanks.") stay on one line.
 
+Set a **Sign-off name** in the menu and "…by Friday. Kind regards." becomes "Kind regards," with your name on the line below.
+
 For direction, an invisible marker (left-to-right or right-to-left mark) is added at the start of a line only when that line starts in the other language, so WhatsApp, Notes, Mail and similar apps align it like the rest of the message.
 
 Turn all of this off with **Smart paragraphs & direction** in the menu.
@@ -151,6 +153,7 @@ Turn all of this off with **Smart paragraphs & direction** in the menu.
 - **Paste last dictation again**
 - **Show floating bubble** (on/off)
 - **Smart paragraphs & direction** (on/off)
+- **Sign-off name…**: type your name once and it's added under sign-offs ("Kind regards", "Thanks", "JazakAllahu khayran"…) in longer messages, unless you say a name yourself. Leave empty to turn off.
 - **Edit vocabulary…**: names and terms it should always spell your way (people, brands, places). Comma-separated; saved instantly.
 - **Open history**: every dictation, with the time. Handy if a paste went to the wrong window.
 - **Quit Local Flow**
@@ -163,7 +166,7 @@ Everything lives in `~/Library/Application Support/LocalFlow/`:
 
 | File | What it is |
 |---|---|
-| `config.json` | Settings (changing the menu updates it). `"sounds": false` turns off the beeps; `"restore_clipboard": false` leaves the dictated text on the clipboard. Restart after editing by hand. |
+| `config.json` | Settings (changing the menu updates it). `"sounds": false` turns off the beeps; `"restore_clipboard": false` leaves the dictated text on the clipboard; `"signoff_name"` is your sign-off name. Restart after editing by hand. |
 | `vocabulary.txt` | Your custom words (also via the menu) |
 | `history.txt` | Everything you've dictated |
 | `stderr.log` | Technical log for troubleshooting |
