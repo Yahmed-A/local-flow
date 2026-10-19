@@ -15,6 +15,7 @@ import numpy as np
 import rumps
 from arabic_phrases import to_arabic
 from bubble import Bubble
+from formatting import format_text, paragraphs
 import sounddevice as sd
 import Quartz
 from AppKit import NSPasteboard, NSPasteboardItem, NSSound
@@ -35,6 +36,7 @@ DEFAULT_CONFIG = {
     "sounds": True,
     "restore_clipboard": True,
     "bubble": True,
+    "smart_format": True,
 }
 DEFAULT_VOCAB = """Jaryah, Kube, Kube Publishing, Deckhand, Manzil, Qur'an, hadith, ayah,
 surah, tafsir, nahw, sarf, Allah, Muhammad, salallahu alayhi wa sallam, InshaAllah,
@@ -124,12 +126,12 @@ class Transcriber:
             initial_prompt=(f"Glossary: {vocab}. " if vocab else "") + style,
             condition_on_previous_text=False,
         )
-        return r["text"]
+        return r
 
 
 def clean(text):
     text = FILLERS.sub("", text).strip()
-    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"[ \t]+", " ", text)
     if text.lower() in HALLUCINATIONS:
         return ""
     return text
@@ -184,6 +186,7 @@ class LocalFlow(rumps.App):
                               ("right_control", "Right Control ⌃"), ("fn", "Fn / Globe"))}
         self.last = rumps.MenuItem("Paste last dictation again", callback=self.repaste)
         self.bubble_item = rumps.MenuItem("Show floating bubble", callback=self.toggle_bubble)
+        self.format_item = rumps.MenuItem("Smart paragraphs & direction", callback=self.toggle_format)
         self.bubble = Bubble()
         self.last_text = ""
         self.menu = [
@@ -193,6 +196,7 @@ class LocalFlow(rumps.App):
             None,
             self.last,
             self.bubble_item,
+            self.format_item,
             rumps.MenuItem("Edit vocabulary…", callback=lambda _: os.system(f'open -t "{VOCAB_FILE}"')),
             rumps.MenuItem("Open history", callback=lambda _: os.system(f'open -t "{HISTORY_FILE}"')),
             None,
@@ -211,6 +215,7 @@ class LocalFlow(rumps.App):
         for k, it in self.hotkey_items.items():
             it.state = k == self.cfg["hotkey"]
         self.bubble_item.state = self.cfg.get("bubble", True)
+        self.format_item.state = self.cfg.get("smart_format", True)
 
     def save(self):
         CONFIG_FILE.write_text(json.dumps(self.cfg, indent=2))
@@ -231,6 +236,10 @@ class LocalFlow(rumps.App):
 
     def toggle_bubble(self, _):
         self.cfg["bubble"] = not self.cfg["bubble"]
+        self.save()
+
+    def toggle_format(self, _):
+        self.cfg["smart_format"] = not self.cfg.get("smart_format", True)
         self.save()
 
     def tick(self, _):
@@ -334,9 +343,14 @@ class LocalFlow(rumps.App):
 
     def transcribe(self, audio):
         try:
-            text = clean(self.stt(audio))
+            r = self.stt(audio)
+            smart = self.cfg.get("smart_format", True)
+            parts = paragraphs(r["segments"], audio) if smart and r.get("segments") else [r["text"]]
+            text = clean("\n\n".join(clean(p) for p in parts if clean(p)))
             if self.cfg["language"] != "en":
                 text = to_arabic(text)
+            if smart and text:
+                text = format_text(text)
             if text:
                 self.last_text = text
                 self.log(text)

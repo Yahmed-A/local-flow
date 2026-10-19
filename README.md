@@ -5,6 +5,8 @@ Private dictation for your Mac, in the style of Wispr Flow. Hold a key, speak, l
 - **100% on your Mac.** Speech is transcribed by OpenAI's Whisper (large-v3-turbo) running on the Mac's own chip. No audio or text is sent anywhere, and there's no subscription.
 - **Fast and accurate.** About 1 second to transcribe 10 seconds of speech on an M4.
 - **Arabic and English together.** Switch languages mid-sentence and each is written in its own script. Common Islamic phrases (السلام عليكم, إن شاء الله, بسم الله, صلى الله عليه وسلم…) come out in Arabic.
+- **Lays out your text.** Your greeting gets its own line, your sign-off its own paragraph, and new paragraphs start where you pause between thoughts.
+- **Keeps English left-aligned.** A mostly-English message stays left-to-right even when a line starts with Arabic, and a mostly-Arabic message stays right-to-left.
 - **Starts at login** and sits quietly in the menu bar.
 
 ---
@@ -119,6 +121,25 @@ Menu bar icon: **◌** loading · **◎** ready · **●** listening · **◐** 
 
 Your clipboard is put back after each paste, so copy/paste keeps working as normal.
 
+### Smart paragraphs
+
+Local Flow decides where to press Enter for you:
+
+| You say | You get |
+|---|---|
+| "Assalamu alaikum brother Ahmed, I hope you're well…" | السلام عليكم brother Ahmed,<br><br>I hope you're well… |
+| "Hi Sarah, can you send the proofs…" (a longer message) | Hi Sarah,<br><br>Can you send the proofs… |
+| A pause of about a second between thoughts | A new paragraph |
+| "…by Friday. Kind regards, Yasir." | …by Friday.<br><br>Kind regards,<br>Yasir |
+| "new paragraph" / "فقرة جديدة" | A new paragraph |
+| "new line" / "سطر جديد" | A line break |
+
+Short chat messages ("Hi Sarah, are you free?", "Can you call me? Thanks.") stay on one line.
+
+For direction, an invisible marker (left-to-right or right-to-left mark) is added at the start of a line only when that line starts in the other language, so WhatsApp, Notes, Mail and similar apps align it like the rest of the message.
+
+Turn all of this off with **Smart paragraphs & direction** in the menu.
+
 ### The ◎ menu
 
 - **Language**
@@ -129,6 +150,7 @@ Your clipboard is put back after each paste, so copy/paste keeps working as norm
 - **Hotkey**: Right Option, Right Command, Right Control or Fn/Globe. If you choose **Fn/Globe**, go to System Settings → Keyboard and set *"Press 🌐 key to"* → **Do Nothing**, or the emoji picker will pop up.
 - **Paste last dictation again**
 - **Show floating bubble** (on/off)
+- **Smart paragraphs & direction** (on/off)
 - **Edit vocabulary…**: names and terms it should always spell your way (people, brands, places). Comma-separated; saved instantly.
 - **Open history**: every dictation, with the time. Handy if a paste went to the wrong window.
 - **Quit Local Flow**
@@ -207,5 +229,6 @@ You are setting up Local Flow on the user's Mac. Do the work yourself in the ter
 - `app.py`: menu bar app (rumps). A macOS event tap watches the hotkey; audio is recorded at 16 kHz with sounddevice; [mlx-whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) transcribes on the Apple GPU; the result is pasted via the clipboard and ⌘V, then the old clipboard is restored. Very short or silent clips are ignored, and common Whisper "hallucinations" are filtered out.
 - Mixed mode gives Whisper a code-switched Arabic/English example plus your vocabulary as a starting prompt, which keeps each language in its own script.
 - `arabic_phrases.py`: converts Islamic phrases Whisper wrote in Latin letters (many spellings) into Arabic script.
+- `formatting.py`: paragraphs (pauses in the audio, greetings, sign-offs, spoken commands) and direction marks.
 - `bubble.py`: the floating indicator (a borderless, non-activating panel that never takes focus).
 - `install.sh` / `uninstall.sh`: set up or remove the login agent `com.jaryah.localflow`.
