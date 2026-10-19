@@ -1,0 +1,7 @@
+mlx-whisper
+sounddevice
+rumps
+numpy
+pyobjc-framework-Quartz
+pyobjc-framework-Cocoa
+pyobjc-framework-ApplicationServices
