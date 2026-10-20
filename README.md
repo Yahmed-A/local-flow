@@ -154,6 +154,7 @@ Open **Local Flow** from Spotlight (⌘ Space, type *Local Flow*), Launchpad, or
   - *Arabic only*
   - *Auto-detect*: picks one language per dictation.
 - **Hotkey**: Right Option, Right Command, Right Control or Fn/Globe. If you choose **Fn/Globe**, go to System Settings → Keyboard and set *"Press 🌐 key to"* → **Do Nothing**, or the emoji picker will pop up.
+- **Microphone: …**: choose which mic to record from (or *System default*). Your choice is remembered; *Refresh list* picks up a mic you just plugged in. If the chosen mic sends only silence, you get a notification telling you to pick another.
 - **Paste last dictation again**
 - **Show floating bubble** (on/off)
 - **Smart paragraphs & direction** (on/off)
@@ -187,7 +188,8 @@ To add more Arabic phrases that should be converted from English letters, edit t
 | Icon stays ◌ for a long time | The first run downloads 1.6 GB. Check your internet and look at `stderr.log`. |
 | Pressing the key does nothing | **Input Monitoring** is missing for python3.12. Turn it on, then run `install.sh` again. |
 | The bubble shows and it transcribes, but no text appears | **Accessibility** is missing. Turn it on, then run `install.sh` again. Your text is still in **Open history**. |
-| Text is empty or "Thank you." | **Microphone** is missing, or the wrong mic is selected in System Settings → Sound → Input. |
+| Nothing is typed and you get a "No sound from …" notification | That mic is off, muted or not worn (wireless headsets often send pure silence). Pick another in ◎ → **Microphone**. |
+| Text is empty or "Thank you." | **Microphone** permission is missing for python3.12, or the wrong mic is chosen in ◎ → **Microphone**. |
 | Typing special characters with Option cancels dictation | That's on purpose: Option + another key is treated as a shortcut, not dictation. |
 | A word keeps coming out wrong | Add it to **Edit vocabulary…** exactly as you want it written. |
 | Arabic phrase comes out in English letters | Make sure Language is *Arabic + English (mixed)*. Add the phrase in Arabic script to the vocabulary. |

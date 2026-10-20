@@ -39,6 +39,7 @@ DEFAULT_CONFIG = {
     "bubble": True,
     "smart_format": True,
     "signoff_name": "",
+    "input_device": "",        # "" = macOS default input
 }
 DEFAULT_VOCAB = """Jaryah, Kube, Kube Publishing, Deckhand, Manzil, Qur'an, hadith, ayah,
 surah, tafsir, nahw, sarf, Allah, Muhammad, salallahu alayhi wa sallam, InshaAllah,
@@ -81,6 +82,11 @@ def load_config():
     return cfg
 
 
+def notify(message):
+    subprocess.Popen(["osascript", "-e", "on run argv\n display notification (item 1 of argv) "
+                      "with title \"Local Flow\"\nend run", message])
+
+
 def play(name):
     s = NSSound.soundNamed_(name)
     if s:
@@ -92,10 +98,31 @@ class Recorder:
         self.chunks, self.stream = [], None
         self.level = 0.0
 
-    def start(self):
+    @staticmethod
+    def inputs(rescan=False):
+        """Names of the connected microphones. rescan picks up newly plugged-in ones."""
+        if rescan:
+            sd._terminate()
+            sd._initialize()
+        return [d["name"] for d in sd.query_devices() if d["max_input_channels"] > 0]
+
+    @staticmethod
+    def current_name(chosen):
+        if chosen and chosen in Recorder.inputs():
+            return chosen
+        try:
+            return sd.query_devices(kind="input")["name"]
+        except Exception:
+            return "none"
+
+    def start(self, device_name=""):
         self.chunks = []
+        self.inputs(rescan=True)
+        devices = sd.query_devices()
+        device = next((i for i, d in enumerate(devices)
+                       if d["name"] == device_name and d["max_input_channels"] > 0), None)
         self.stream = sd.InputStream(samplerate=RATE, channels=1, dtype="float32",
-                                     callback=self._on_audio)
+                                     device=device, callback=self._on_audio)
         self.stream.start()
 
     def _on_audio(self, data, *_):
@@ -196,11 +223,13 @@ class LocalFlow(rumps.App):
         self.format_item = rumps.MenuItem("Smart paragraphs & direction", callback=self.toggle_format)
         self.name_item = rumps.MenuItem("Sign-off name…", callback=self.set_signoff_name)
         self.bubble = Bubble()
+        self.mic_menu = rumps.MenuItem("Microphone")
         self.last_text = ""
         self.menu = [
             self.status, None,
             ("Language", list(self.lang_items.values())),
             ("Hotkey", list(self.hotkey_items.values())),
+            self.mic_menu,
             None,
             self.last,
             self.bubble_item,
@@ -212,12 +241,38 @@ class LocalFlow(rumps.App):
             rumps.MenuItem("Quit Local Flow", callback=lambda _: rumps.quit_application()),
         ]
         self.refresh_checks()
+        self.build_mic_menu()
         self.install_tap()
         threading.Thread(target=self.load_model, daemon=True).start()
         self._ui = rumps.Timer(self.tick, 0.04)
         self._ui.start()
 
     # ---- menu ----
+    def build_mic_menu(self, rescan=False):
+        if self.mic_menu._menu is not None:
+            self.mic_menu.clear()
+        chosen = self.cfg.get("input_device", "")
+        default = rumps.MenuItem("System default", callback=self.set_mic)
+        default.state = not chosen
+        self.mic_menu.add(default)
+        names = Recorder.inputs(rescan)
+        for name in names:
+            it = rumps.MenuItem(name, callback=self.set_mic)
+            it.state = name == chosen
+            self.mic_menu.add(it)
+        if chosen and chosen not in names:
+            gone = rumps.MenuItem(f"{chosen} (not connected)")
+            gone.state = True
+            self.mic_menu.add(gone)
+        self.mic_menu.add(None)
+        self.mic_menu.add(rumps.MenuItem("Refresh list", callback=lambda _: self.build_mic_menu(True)))
+        self.mic_menu.title = f"Microphone: {Recorder.current_name(chosen)}"
+
+    def set_mic(self, item):
+        self.cfg["input_device"] = "" if item.title == "System default" else item.title
+        self.save()
+        self.build_mic_menu()
+
     def refresh_checks(self):
         for k, it in self.lang_items.items():
             it.state = k == self.cfg["language"]
@@ -338,9 +393,10 @@ class LocalFlow(rumps.App):
         if self.state != "idle":
             return
         try:
-            self.rec.start()
+            self.rec.start(self.cfg.get("input_device", ""))
         except Exception as e:
             self.log(f"[mic error] {e}")
+            notify(f"Couldn't open the microphone. Pick another one in the ◎ menu → Microphone.")
             return
         self.recording, self.handsfree, self.state = True, False, "rec"
         if self.cfg["sounds"]:
@@ -351,6 +407,10 @@ class LocalFlow(rumps.App):
             return
         self.recording, self.handsfree = False, False
         audio = self.rec.stop()
+        if not cancel and len(audio) >= RATE * MIN_SECONDS and np.abs(audio).max() < 1e-4:
+            name = Recorder.current_name(self.cfg.get("input_device", ""))
+            self.log(f"[silent mic] {name}")
+            notify(f"No sound from {name}. Pick another microphone in the ◎ menu → Microphone.")
         if cancel or len(audio) < RATE * MIN_SECONDS or np.sqrt(np.mean(audio ** 2)) < 0.003:
             self.state = "idle"
             if self.cfg["sounds"]:
