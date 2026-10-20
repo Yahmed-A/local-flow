@@ -1,0 +1,43 @@
+name: Windows build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install -r windows/requirements.txt
+      - name: Self-test from source (speech -> text with the tiny model, clipboard, Arabic)
+        working-directory: windows
+        run: python selftest.py
+      - name: Build app and installer
+        env:
+          LOCALFLOW_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}
+        run: python windows/build_win.py
+      - name: Self-test the built LocalFlow.exe
+        shell: pwsh
+        run: |
+          $p = Start-Process dist\LocalFlow\LocalFlow.exe -ArgumentList "--selftest" -Wait -PassThru
+          Get-Content "$env:TEMP\localflow_selftest.log"
+          if ($p.ExitCode -ne 0) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LocalFlowSetup
+          path: dist/LocalFlowSetup.exe
+      - name: Publish release (tags only)
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create ${{ github.ref_name }} dist/LocalFlowSetup.exe --title "Local Flow ${{ github.ref_name }}" --notes "Windows installer: download LocalFlowSetup.exe below. Mac: see the README." --latest

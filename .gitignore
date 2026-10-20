@@ -1,4 +1,7 @@
-.venv/
-__pycache__/
 *.pyc
 .DS_Store
+.venv/
+__pycache__/
+build/
+dist/
+windows/icon.ico
