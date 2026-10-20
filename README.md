@@ -142,6 +142,10 @@ For direction, an invisible marker (left-to-right or right-to-left mark) is adde
 
 Turn all of this off with **Smart paragraphs & direction** in the menu.
 
+### Quit it by accident?
+
+Open **Local Flow** from Spotlight (⌘ Space, type *Local Flow*), Launchpad, or `~/Applications`, and it starts again. If it's already running, you get a note saying so. Drag it to your Dock for a one-click button.
+
 ### The ◎ menu
 
 - **Language**
@@ -234,4 +238,4 @@ You are setting up Local Flow on the user's Mac. Do the work yourself in the ter
 - `arabic_phrases.py`: converts Islamic phrases Whisper wrote in Latin letters (many spellings) into Arabic script.
 - `formatting.py`: paragraphs (pauses in the audio, greetings, sign-offs, spoken commands) and direction marks.
 - `bubble.py`: the floating indicator (a borderless, non-activating panel that never takes focus).
-- `install.sh` / `uninstall.sh`: set up or remove the login agent `com.jaryah.localflow`.
+- `install.sh` / `uninstall.sh`: set up or remove the login agent `com.jaryah.localflow` and the `~/Applications/Local Flow.app` launcher (icon drawn by `launcher_icon.py`).
