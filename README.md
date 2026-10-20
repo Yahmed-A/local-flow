@@ -1,5 +1,7 @@
 # Local Flow
 
+**Mac and Windows.** Windows users: jump to [Windows](#windows).
+
 Private dictation for your Mac, in the style of Wispr Flow. Hold a key, speak, let go, and your words are typed wherever your cursor is: email, Word, WhatsApp, the browser, anywhere.
 
 - **100% on your Mac.** Speech is transcribed by OpenAI's Whisper (large-v3-turbo) running on the Mac's own chip. No audio or text is sent anywhere, and there's no subscription.
@@ -212,6 +214,51 @@ Optionally also delete the speech model: `rm -rf ~/.cache/huggingface/hub/models
 
 ---
 
+## Windows
+
+Local Flow also runs on Windows 10 and 11 (64-bit). It works the same way: hold a key, speak, let go, and your words are typed where your cursor is. Speech is transcribed on the PC itself. Nothing is sent anywhere.
+
+### Install
+
+1. Download **[LocalFlowSetup.exe](https://github.com/Yahmed-A/local-flow/releases/latest/download/LocalFlowSetup.exe)**.
+2. Open it. Windows may show *"Windows protected your PC"* because the installer isn't signed by a paid certificate: click **More info**, then **Run anyway**.
+3. Click through the installer. No administrator password is needed. Leave **Start Local Flow when Windows starts** ticked.
+4. Local Flow starts and a small ring icon appears in the system tray (bottom right; it may be under the **^** arrow; drag it onto the taskbar to keep it visible).
+5. **The first time only**, it downloads the speech model (about 1.6 GB). The tray icon shows a dotted ring until it's ready; hover over it to see the status.
+
+### Use it
+
+| Do this | What happens |
+|---|---|
+| Hold **Right Ctrl**, speak, let go | Your words are typed where the cursor is |
+| Tap **Right Ctrl** quickly | Hands-free: keep talking, tap again to finish |
+| **Esc** while talking | Cancel |
+
+A small dark bubble at the bottom of the screen shows it's listening. Everything else is in the tray icon's menu (click it): language (Arabic + English mixed, English only, Arabic only, auto), hotkey (Right Ctrl, Right Alt, Caps Lock, F8, F9), microphone, speech model, sign-off name, vocabulary, history, start with Windows.
+
+### What you need
+
+| | |
+|---|---|
+| Windows | 10 or 11, 64-bit |
+| Memory | 8 GB minimum, 16 GB recommended |
+| Disk | About 3 GB free |
+| Speed | A recent Intel or AMD processor transcribes 10 seconds of speech in roughly 3 to 8 seconds. An NVIDIA graphics card is used automatically if it's set up for CUDA, which is much faster. On a slow PC choose **Speech model → Fast** in the menu (quicker, a little less accurate, especially for Arabic). |
+
+### Windows troubleshooting
+
+- **Nothing types:** some apps run as administrator, and Windows blocks other apps from typing into them. Try in Notepad first. If the text is on the clipboard, Ctrl+V pastes it.
+- **"No sound from …":** choose your microphone in the tray menu → **Microphone**. Also check *Settings → Privacy & security → Microphone → Let desktop apps access your microphone* is on.
+- **Right Ctrl is awkward on a laptop:** switch to **Caps Lock**, **F8** or **F9** in the tray menu → **Hotkey**.
+- **Files:** settings, vocabulary and history are in `%APPDATA%\LocalFlow` (paste that into the File Explorer address bar).
+- **Uninstall:** Settings → Apps → Installed apps → Local Flow → Uninstall.
+
+### For developers
+
+The Windows app is `windows/app_win.py` (tray via pystray, keys via pynput, faster-whisper, focus-safe Tk bubble). It shares `formatting.py` and `arabic_phrases.py` with the Mac app. Every push to `main` builds and self-tests it on GitHub's Windows machines (`.github/workflows/windows.yml`); pushing a tag like `v2.0.0` publishes `LocalFlowSetup.exe` as a release. To build by hand on Windows: `py -m pip install -r windows\requirements.txt` then `py windows\build_win.py`.
+
+---
+
 ## Instructions for Claude
 
 You are setting up Local Flow on the user's Mac. Do the work yourself in the terminal; the user only needs to click things in System Settings. Keep explanations short and non-technical.
@@ -232,6 +279,10 @@ You are setting up Local Flow on the user's Mac. Do the work yourself in the ter
 8. **Hand over.** Ask the user to click into any text box, hold **Right Option**, say a sentence and let go. If nothing is typed, use the Troubleshooting table above. Then briefly explain the hotkey, hands-free tap, Esc, the ◎ menu (language, vocabulary, history), and offer to add their own names/terms to `~/Library/Application Support/LocalFlow/vocabulary.txt` (the default list contains the original author's brand names; replace them with the user's).
 
 ---
+
+### On Windows
+
+If the user is on Windows, don't use the Mac steps. Point them to the installer instead: download https://github.com/Yahmed-A/local-flow/releases/latest/download/LocalFlowSetup.exe, open it (on the SmartScreen warning: **More info → Run anyway**), keep "Start Local Flow when Windows starts" ticked, and wait for the first-run model download (tray icon stops showing a dotted ring). Then have them test in Notepad: hold Right Ctrl, speak, release. If you can run commands on their PC, `"%LOCALAPPDATA%\Programs\Local Flow\LocalFlow.exe" --selftest` checks transcription and the clipboard and writes `%TEMP%\localflow_selftest.log`.
 
 ## How it works (for the curious)
 

@@ -27,8 +27,9 @@ class _Log:
         self.f = open(os.path.join(tempfile.gettempdir(), "localflow_selftest.log"), "w", encoding="utf-8")
     def write(self, s):
         self.f.write(s); self.f.flush()
-        if sys.__stdout__:
-            sys.__stdout__.write(s)
+        if sys.__stdout__:  # Windows consoles may not be UTF-8; never fail the test over printing
+            enc = sys.__stdout__.encoding or "utf-8"
+            sys.__stdout__.write(s.encode(enc, "replace").decode(enc))
     def flush(self):
         pass
 
