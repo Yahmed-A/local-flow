@@ -10,6 +10,8 @@ import re
 import subprocess
 import threading
 import time
+import urllib.request
+import wave
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +31,7 @@ SUPPORT.mkdir(parents=True, exist_ok=True)
 CONFIG_FILE = SUPPORT / "config.json"
 VOCAB_FILE = SUPPORT / "vocabulary.txt"
 HISTORY_FILE = SUPPORT / "history.txt"
+LAST_AUDIO = SUPPORT / "last.wav"   # most recent clip, for checking misheard dictations
 
 DEFAULT_CONFIG = {
     "hotkey": "right_option",  # right_option | right_command | right_control | fn
@@ -40,6 +43,8 @@ DEFAULT_CONFIG = {
     "smart_format": True,
     "signoff_name": "",
     "input_device": "",        # "" = macOS default input
+    # Shift + hotkey sends the words to the WhatsApp approval bot (~/Projects/wa-approve) instead of pasting
+    "whatsapp_url": "http://127.0.0.1:8794/api/voice",
 }
 DEFAULT_VOCAB = """Jaryah, Kube, Kube Publishing, Deckhand, Manzil, Qur'an, hadith, ayah,
 surah, tafsir, nahw, sarf, Allah, Muhammad, salallahu alayhi wa sallam, InshaAllah,
@@ -57,9 +62,12 @@ TAP_SECONDS = 0.3      # shorter press = tap (hands-free toggle)
 RATE = 16000
 MIN_SECONDS = 0.35
 FILLERS = re.compile(r"\b(?:um+|uh+|erm+|uhm+)\b[,.]?\s*", re.I)
-# A code-switched example steers Whisper to keep each language in its own script
-MIXED_PROMPT = ("السلام عليكم ورحمة الله وبركاته. قال الأستاذ: today we read باب الفاعل, and he said "
-                "إن شاء الله we'll finish the book.")
+# A code-switched example steers Whisper to keep each language in its own script.
+# No greetings or set phrases in it: on unclear audio Whisper echoes the prompt back.
+MIXED_PROMPT = "قال الأستاذ: today we read باب الفاعل في الكتاب, and the homework is الدرس الثالث."
+ARABIC_PROMPT = None  # any example sentence gets echoed back on unclear audio
+MIN_RMS = 0.0015       # quieter than this is treated as no speech
+AR_SHARE = 0.1         # mixed mode decodes as Arabic when Arabic gets this share of ar+en
 SIGNOFF_DIALOG = """on run argv
     activate
     set r to display dialog "Your name is added on its own line after sign-offs like Kind regards or JazakAllahu khayran in longer messages, unless you say a name. Leave empty to turn off." default answer (item 1 of argv) with title "Sign-off name" buttons {"Cancel", "Save"} default button "Save"
@@ -85,6 +93,19 @@ def load_config():
 def notify(message):
     subprocess.Popen(["osascript", "-e", "on run argv\n display notification (item 1 of argv) "
                       "with title \"Local Flow\"\nend run", message])
+
+
+def send_to_whatsapp(url, text):
+    req = urllib.request.Request(url, data=json.dumps({"text": text}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=90) as r:
+            out = json.loads(r.read())
+        notify(f"WhatsApp draft for {out.get('chatName')} is waiting for approval")
+    except urllib.error.HTTPError as e:
+        notify(json.loads(e.read() or b"{}").get("error", f"WhatsApp bot error {e.code}"))
+    except Exception:
+        notify("WhatsApp bot isn't running. Start it in ~/Projects/wa-approve")
 
 
 def play(name):
@@ -141,6 +162,7 @@ class Recorder:
 class Transcriber:
     def __init__(self, cfg):
         self.cfg, self.ready = cfg, False
+        self.lock = threading.Lock()  # one transcription at a time
 
     def load(self):
         import mlx_whisper
@@ -150,21 +172,49 @@ class Transcriber:
                                language="en")
         self.ready = True
 
+    def arabic_share(self, audio):
+        """Share of Arabic in Whisper's ar-vs-en language guess for this clip."""
+        import mlx.core as mx
+        from mlx_whisper.audio import N_FRAMES, N_SAMPLES, log_mel_spectrogram, pad_or_trim
+        from mlx_whisper.transcribe import ModelHolder
+        model = ModelHolder.get_model(self.cfg["model"], mx.float16)
+        mel = log_mel_spectrogram(audio, n_mels=model.dims.n_mels, padding=N_SAMPLES)
+        _, probs = model.detect_language(pad_or_trim(mel, N_FRAMES, axis=-2).astype(mx.float16))
+        probs = probs if isinstance(probs, dict) else probs[0]
+        return probs["ar"] / max(probs["ar"] + probs["en"], 1e-9)
+
     def __call__(self, audio):
         vocab = " ".join(VOCAB_FILE.read_text().split()) if VOCAB_FILE.exists() else ""
         lang = self.cfg["language"]
-        style = MIXED_PROMPT if lang == "mixed" else "Hello, here is a well-punctuated sentence."
-        r = self.mlx_whisper.transcribe(
-            audio, path_or_hf_repo=self.cfg["model"],
-            language={"auto": None, "mixed": "en"}.get(lang, lang),
-            initial_prompt=(f"Glossary: {vocab}. " if vocab else "") + style,
-            condition_on_previous_text=False,
-        )
+        with self.lock:
+            if lang == "mixed":
+                # Whisper forced to English writes spoken Arabic in Latin letters, so pick per clip
+                lang = "ar" if self.arabic_share(audio) >= AR_SHARE else "en"
+                prompt = MIXED_PROMPT
+            elif lang == "ar":
+                prompt = ARABIC_PROMPT  # an English prompt pushes Arabic speech towards translation
+            else:
+                prompt = "Hello, here is a well-punctuated sentence."
+            if vocab and prompt:
+                prompt = f"Glossary: {vocab}. " + prompt
+            r = self.mlx_whisper.transcribe(
+                audio, path_or_hf_repo=self.cfg["model"],
+                language=None if lang == "auto" else lang,
+                initial_prompt=prompt, condition_on_previous_text=False,
+            )
+        # drop segments that only echo the prompt back (happens on mumbled or quiet audio)
+        segs = [g for g in r.get("segments", [])
+                if not (len(g["text"].strip()) > 12 and g["text"].strip(" .،,") in (prompt or ""))]
+        if len(segs) != len(r.get("segments", [])):
+            r["segments"] = segs
+            r["text"] = "".join(g["text"] for g in segs)
         return r
 
 
 def clean(text):
     text = FILLERS.sub("", text).strip()
+    # cut Whisper repetition loops ("640 640 640 640 ...") down to one
+    text = re.sub(r"(\b\S+(?:\s+\S+){0,3}?)(?:\s+\1\b){3,}", r"\1", text)
     text = re.sub(r"[ \t]+", " ", text)
     if text.lower() in HALLUCINATIONS:
         return ""
@@ -225,6 +275,8 @@ class LocalFlow(rumps.App):
         self.bubble = Bubble()
         self.mic_menu = rumps.MenuItem("Microphone")
         self.last_text = ""
+        self.to_whatsapp = False
+        self.pending = 0  # clips still being transcribed
         self.menu = [
             self.status, None,
             ("Language", list(self.lang_items.values())),
@@ -370,15 +422,19 @@ class LocalFlow(rumps.App):
                 self.finish(cancel=True)  # hotkey used as a modifier, not dictation
             return event
         hk_code, hk_flag = HOTKEYS[self.cfg["hotkey"]]
+        flags = Quartz.CGEventGetFlags(event)
+        if self.recording and flags & Quartz.kCGEventFlagMaskShift:
+            self.to_whatsapp = True  # Shift at any point while talking routes to WhatsApp
         if code != hk_code:
             return event
-        pressed = bool(Quartz.CGEventGetFlags(event) & hk_flag)
+        pressed = bool(flags & hk_flag)
         if pressed and not self.key_down:
             self.key_down, self.down_at = True, time.time()
             if self.recording and self.handsfree:
                 self.finish()
             elif not self.recording:
                 self.begin()
+                self.to_whatsapp = bool(flags & Quartz.kCGEventFlagMaskShift)
         elif not pressed and self.key_down:
             self.key_down = False
             if self.recording and not self.handsfree:
@@ -390,7 +446,7 @@ class LocalFlow(rumps.App):
 
     # ---- dictation ----
     def begin(self):
-        if self.state != "idle":
+        if self.recording or self.state in ("loading", "error"):
             return
         try:
             self.rec.start(self.cfg.get("input_device", ""))
@@ -411,19 +467,32 @@ class LocalFlow(rumps.App):
             name = Recorder.current_name(self.cfg.get("input_device", ""))
             self.log(f"[silent mic] {name}")
             notify(f"No sound from {name}. Pick another microphone in the ◎ menu → Microphone.")
-        if cancel or len(audio) < RATE * MIN_SECONDS or np.sqrt(np.mean(audio ** 2)) < 0.003:
-            self.state = "idle"
+        rms = float(np.sqrt(np.mean(audio ** 2))) if len(audio) else 0.0
+        if cancel or len(audio) < RATE * MIN_SECONDS or rms < MIN_RMS:
+            if not cancel and len(audio) >= RATE * MIN_SECONDS:
+                self.log(f"[too quiet, skipped] {len(audio) / RATE:.1f}s rms={rms:.4f}")
+            self.state = "busy" if self.pending else "idle"
             if self.cfg["sounds"]:
-                play("Basso" if cancel else "Pop")
+                play("Basso" if cancel or len(audio) >= RATE * MIN_SECONDS else "Pop")
             return
         if self.cfg["sounds"]:
             play("Pop")
+        self.save_clip(audio)
+        self.pending += 1
         self.state = "busy"
         threading.Thread(target=self.transcribe, args=(audio,), daemon=True).start()
 
     def transcribe(self, audio):
         try:
             r = self.stt(audio)
+            if self.to_whatsapp:
+                text = clean(r["text"])
+                if self.cfg["language"] != "en":
+                    text = to_arabic(text)
+                if text:
+                    self.log("[whatsapp] " + text)
+                    send_to_whatsapp(self.cfg["whatsapp_url"], text)
+                return
             smart = self.cfg.get("smart_format", True)
             parts = paragraphs(r["segments"], audio) if smart and r.get("segments") else [r["text"]]
             text = clean("\n\n".join(clean(p) for p in parts if clean(p)))
@@ -435,9 +504,24 @@ class LocalFlow(rumps.App):
                 self.last_text = text
                 self.log(text)
                 paste(text, self.cfg["restore_clipboard"])
+            else:
+                self.log(f"[no words heard] {len(audio) / RATE:.1f}s, raw: {r['text'].strip()[:80]!r}")
+                if self.cfg["sounds"]:
+                    play("Basso")
         except Exception as e:
             self.log(f"[error] {e}")
-        self.state = "idle"
+        finally:
+            self.pending -= 1
+            if not self.recording:
+                self.state = "busy" if self.pending else "idle"
+
+    def save_clip(self, audio):
+        try:
+            with wave.open(str(LAST_AUDIO), "wb") as w:
+                w.setnchannels(1), w.setsampwidth(2), w.setframerate(RATE)
+                w.writeframes((np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes())
+        except Exception:
+            pass
 
     def log(self, line):
         with open(HISTORY_FILE, "a") as f:
