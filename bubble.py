@@ -1,4 +1,4 @@
-"""Floating bubble at the bottom of the screen: live voice bars while listening,
+"""Floating bubble at the bottom of every screen: live voice bars while listening,
 a slow sweep while transcribing. Never takes focus or clicks."""
 import math
 import time
@@ -66,49 +66,68 @@ class BubbleView(NSView):
 
 
 class Bubble:
+    """One pill per display, so it shows on whichever screen you are looking at."""
+
     def __init__(self):
+        self.pills, self.layout, self.visible = [], None, False
+
+    @staticmethod
+    def _make_pill():
         style = NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
-        self.win = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
+        win = NSPanel.alloc().initWithContentRect_styleMask_backing_defer_(
             NSMakeRect(0, 0, W, H), style, NSBackingStoreBuffered, False)
-        self.win.setLevel_(NSStatusWindowLevel)
-        self.win.setOpaque_(False)
-        self.win.setBackgroundColor_(NSColor.clearColor())
-        self.win.setHasShadow_(True)
-        self.win.setIgnoresMouseEvents_(True)
-        self.win.setHidesOnDeactivate_(False)
-        self.win.setCollectionBehavior_(NSWindowCollectionBehaviorCanJoinAllSpaces |
-                                        NSWindowCollectionBehaviorFullScreenAuxiliary |
-                                        NSWindowCollectionBehaviorStationary)
-        self.view = BubbleView.alloc().initWithFrame_(NSMakeRect(0, 0, W, H))
-        self.win.setContentView_(self.view)
-        self.visible = False
+        win.setLevel_(NSStatusWindowLevel)
+        win.setOpaque_(False)
+        win.setBackgroundColor_(NSColor.clearColor())
+        win.setHasShadow_(True)
+        win.setIgnoresMouseEvents_(True)
+        win.setHidesOnDeactivate_(False)
+        win.setReleasedWhenClosed_(False)
+        win.setCollectionBehavior_(NSWindowCollectionBehaviorCanJoinAllSpaces |
+                                   NSWindowCollectionBehaviorFullScreenAuxiliary |
+                                   NSWindowCollectionBehaviorStationary)
+        view = BubbleView.alloc().initWithFrame_(NSMakeRect(0, 0, W, H))
+        win.setContentView_(view)
+        return win, view
 
     def _place(self):
-        screen = NSScreen.mainScreen() or NSScreen.screens()[0]
-        f = screen.visibleFrame()
-        self.win.setFrameOrigin_((f.origin.x + (f.size.width - W) / 2, f.origin.y + 14))
+        frames = [s.visibleFrame() for s in NSScreen.screens()]
+        layout = [(f.origin.x, f.origin.y, f.size.width) for f in frames]
+        if layout == self.layout:
+            return
+        self.layout = layout  # displays plugged in, removed or rearranged
+        while len(self.pills) < len(frames):
+            self.pills.append(self._make_pill())
+        for win, _ in self.pills[len(frames):]:
+            win.orderOut_(None)
+        del self.pills[len(frames):]
+        for (win, _), f in zip(self.pills, frames):
+            win.setFrameOrigin_((f.origin.x + (f.size.width - W) / 2, f.origin.y + 14))
 
     def update(self, state, level=None, handsfree=False):
         """Call on the main thread ~25x a second."""
         if state in ("rec", "busy"):
             if not self.visible:
                 self._place()
-                self.view.levels.extend([0.0] * BARS)
-                self.win.setAlphaValue_(0.0)
-                self.win.orderFrontRegardless()
+                for win, view in self.pills:
+                    view.levels.extend([0.0] * BARS)
+                    win.setAlphaValue_(0.0)
+                    win.orderFrontRegardless()
                 self.visible = True
-            a = self.win.alphaValue()
-            if a < 1:
-                self.win.setAlphaValue_(min(1.0, a + 0.25))
-            self.view.mode = state
-            self.view.handsfree = handsfree
-            if level is not None:
-                self.view.levels.append(level)
-            self.view.setNeedsDisplay_(True)
+            for win, view in self.pills:
+                a = win.alphaValue()
+                if a < 1:
+                    win.setAlphaValue_(min(1.0, a + 0.25))
+                view.mode = state
+                view.handsfree = handsfree
+                if level is not None:
+                    view.levels.append(level)
+                view.setNeedsDisplay_(True)
         elif self.visible:
-            a = self.win.alphaValue() - 0.2
-            if a <= 0:
-                self.win.orderOut_(None)
-                self.visible = False
-            else:
-                self.win.setAlphaValue_(a)
+            for win, _ in self.pills:
+                a = win.alphaValue() - 0.2
+                if a <= 0:
+                    win.orderOut_(None)
+                else:
+                    win.setAlphaValue_(a)
+            self.visible = any(win.isVisible() for win, _ in self.pills)
