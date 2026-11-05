@@ -22,8 +22,8 @@ android {
         applicationId = "com.jaryah.localflow"
         minSdk = 26
         targetSdk = 35
-        versionCode = (System.getenv("LF_VERSION_CODE") ?: "1").toInt()
-        versionName = System.getenv("LF_VERSION_NAME") ?: "1.0.0"
+        versionCode = (System.getenv("LF_VERSION_CODE") ?: "2").toInt()
+        versionName = System.getenv("LF_VERSION_NAME") ?: "1.1.0"
         ndk { abiFilters += "arm64-v8a" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=c++_static") } }

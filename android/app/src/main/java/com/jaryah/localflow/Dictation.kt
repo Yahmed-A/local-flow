@@ -25,6 +25,12 @@ class Prefs(context: Context) {
     var vocab: String
         get() = p.getString("vocab", "")!!
         set(v) = p.edit().putString("vocab", v).apply()
+    var layout: String  // en | ar: the letters the keyboard last showed
+        get() = p.getString("layout", "en")!!
+        set(v) = p.edit().putString("layout", v).apply()
+    var voicePanel: Boolean  // the dictation panel was open last time
+        get() = p.getBoolean("voice_panel", false)
+        set(v) = p.edit().putBoolean("voice_panel", v).apply()
 
     companion object {
         val LANGUAGES = listOf("mixed" to "Mixed", "en" to "English", "ar" to "عربي", "auto" to "Auto")

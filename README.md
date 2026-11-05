@@ -261,7 +261,7 @@ The Windows app is `windows/app_win.py` (tray via pystray, keys via pynput, fast
 
 ## Android
 
-On Android, Local Flow is a **voice keyboard**. Android doesn't let apps catch a hotkey or paste into other apps, so you pick Local Flow as your keyboard when you want to dictate, and switch back afterwards.
+On Android, Local Flow is a **full keyboard with dictation built in**: English and Arabic letters, numbers and symbols, and a mic that opens the dictation panel. You can make it your only keyboard and turn Gboard off.
 
 ### Install
 
@@ -274,19 +274,27 @@ On Android, Local Flow is a **voice keyboard**. Android doesn't let apps catch a
 | Large turbo | 548 MB | Same model as the Mac, most accurate, slower; flagship phones |
 | Base | 57 MB | Fastest, weak on Arabic |
 
+### Make it your only keyboard
+
+- **Default keyboard.** Pixel: Settings > System > Keyboard > On-screen keyboard, and pick Local Flow as the default (on some versions it is Settings > System > Languages & input). Samsung: Settings > General management > Keyboard list and default > Default keyboard > Local Flow.
+- **Turn Gboard off** once you're happy: switch it off in that same keyboard list, or Settings > Apps > Gboard > Disable. You can turn it back on the same way.
+
 ### Use it
 
-- In any text box, switch to Local Flow (the keyboard button in the navigation bar, or long-press space on Gboard).
-- **Hold the mic** and talk; let go to write. **Tap** the mic for hands-free, and tap again to finish.
-- The top-right button changes language (Mixed, English, عربي, Auto). While recording it becomes **Cancel**.
-- **ABC** goes back to your normal keyboard (long-press it for the full keyboard list).
+- **Letters.** Tap shift for one capital, double-tap it for caps lock. Hold a letter for its accents; hold a top-row key for its number (the small digit in the corner). Hold **.** for more punctuation. A quick double space types a full stop.
+- **?123** opens numbers and symbols; **=\<** has more symbols; **ABC** goes back.
+- **ع / EN** switches between English and Arabic letters (it remembers your choice). The Arabic layout has ة ى ء ئ ؤ on the bottom row; hold **ا** for أ إ آ, and **؟١٢٣** has Arabic digits (hold one for 1, 2, 3…) and the tashkeel: fatha, damma, kasra, tanween, sukun, shadda.
+- **Hold ع / EN** to switch to another keyboard (the globe key).
+- **Slide your finger along the space bar** to move the cursor. Hold backspace to keep deleting.
+- **Dictation.** Tap the **mic** at the top right. **Hold the mic** and talk; let go to write. **Tap** the mic for hands-free, and tap again to finish. The top-right button changes language (Mixed, English, عربي, Auto); while recording it becomes **Cancel**. **ABC** goes back to the letters.
+- In password boxes the mic and the key previews are hidden.
 - Smart paragraphs, Arabic phrases, the sign-off name and the glossary all work as on the Mac. Everything runs on the phone; nothing is sent anywhere.
 
 Needs Android 8 or newer on a 64-bit ARM phone (practically every phone since 2018).
 
 ### For developers
 
-The app is in `android/`: a Kotlin `InputMethodService` (`LocalFlowIME.kt`), whisper.cpp v1.7.4 through JNI (`app/src/main/cpp`), and `TextRules.kt`, a port of `formatting.py`, `arabic_phrases.py` and `clean()`. A unit test checks the port against outputs of the Python rules (`app/src/test/resources/cases.json`). If you change the Python rules, change the Kotlin too and regenerate that file. `DictationTest` runs real speech through the model on a device or emulator. Every push that touches `android/` builds it on GitHub (`.github/workflows/android.yml`); a tag like `android-v1.0.0` publishes `LocalFlow.apk`. Set the repo secrets `LF_KEYSTORE_B64` and `LF_KEYSTORE_PASSWORD` so every build is signed with the same key; otherwise phones can't update from one build to the next. To build locally: JDK 17 and the Android SDK, then `cd android && ./gradlew assembleRelease`.
+The app is in `android/`: a Kotlin `InputMethodService` (`LocalFlowIME.kt`) with a custom-drawn keyboard (`Keyboard.kt`: layouts and the key view), whisper.cpp v1.7.4 through JNI (`app/src/main/cpp`), and `TextRules.kt`, a port of `formatting.py`, `arabic_phrases.py` and `clean()`. A unit test checks the port against outputs of the Python rules (`app/src/test/resources/cases.json`). If you change the Python rules, change the Kotlin too and regenerate that file. `DictationTest` runs real speech through the model on a device or emulator. Every push that touches `android/` builds it on GitHub (`.github/workflows/android.yml`); a tag like `android-v1.0.0` publishes `LocalFlow.apk`. Set the repo secrets `LF_KEYSTORE_B64` and `LF_KEYSTORE_PASSWORD` so every build is signed with the same key; otherwise phones can't update from one build to the next. To build locally: JDK 17 and the Android SDK, then `cd android && ./gradlew assembleRelease`.
 
 ---
 

@@ -31,10 +31,11 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * The voice keyboard. Hold the mic to talk (release to write), or tap it for
- * hands-free and tap again to finish. Text goes straight into the focused field.
+ * The keyboard: English and Arabic letters, plus the dictation panel behind the mic.
+ * In the panel, hold the mic to talk (release to write), or tap it for hands-free
+ * and tap again to finish. Text goes straight into the focused field.
  */
-class LocalFlowIME : InputMethodService() {
+class LocalFlowIME : InputMethodService(), KeyboardView.Listener {
 
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()  // one transcription at a time, in order
@@ -49,6 +50,13 @@ class LocalFlowIME : InputMethodService() {
     private lateinit var mic: FrameLayout
     private lateinit var micIcon: ImageView
     private lateinit var levels: LevelView
+    private lateinit var kb: KeyboardView
+    private lateinit var voice: LinearLayout
+
+    private var lang = "en"
+    private var secret = false  // password field: no dictation, no previews
+    private var shiftAt = 0L
+    private var spaceAt = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -84,15 +92,26 @@ class LocalFlowIME : InputMethodService() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(BG)
-            setPadding(dpi(8), dpi(10), dpi(8), dpi(8))
             // keep the keys above the gesture / navigation bar
             setOnApplyWindowInsetsListener { v, insets ->
                 val nav = if (Build.VERSION.SDK_INT >= 30) insets.getInsets(WindowInsets.Type.navigationBars()).bottom
                           else @Suppress("DEPRECATION") insets.systemWindowInsetBottom
-                v.setPadding(dpi(8), dpi(10), dpi(8), dpi(8) + nav)
+                v.setPadding(0, 0, 0, nav)
                 insets
             }
         }
+
+        // letters and the dictation panel share one slot, so switching doesn't make the screen jump
+        kb = KeyboardView(this, this)
+        val frame = FrameLayout(this)
+        root.addView(frame, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, kb.preferredHeight()))
+        frame.addView(kb)
+        voice = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dpi(8), dpi(4), dpi(8), dpi(6))
+        }
+        frame.addView(voice, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
 
         val top = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         status = TextView(this).apply {
@@ -109,13 +128,13 @@ class LocalFlowIME : InputMethodService() {
             setOnClickListener { onChip() }
         }
         top.addView(status); top.addView(chip)
-        root.addView(top)
+        voice.addView(top)
 
         levels = LevelView(this).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpi(28))
                 .apply { topMargin = dpi(10) }
         }
-        root.addView(levels)
+        voice.addView(levels)
 
         micIcon = ImageView(this).apply {
             setImageResource(R.drawable.ic_mic)
@@ -130,27 +149,52 @@ class LocalFlowIME : InputMethodService() {
             setOnTouchListener { v, e -> onMicTouch(v, e) }
             contentDescription = "Dictate"
         }
-        root.addView(mic)
+        voice.addView(mic)
 
         val row = LinearLayout(this)
-        row.addView(key("ABC", 1.1f) { switchKeyboard() }.apply {
+        row.addView(key("ABC", 1.1f) { showVoice(false) }.apply {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             setOnLongClickListener { picker(); true }
-            contentDescription = "Switch keyboard"
+            contentDescription = "Letters"
         })
         row.addView(key(",", 0.8f) { commit(",") })
         row.addView(key("space", 3f) { commit(" ") }.apply { setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f); setTextColor(MUTED) })
         row.addView(key(".", 0.8f) { commit(".") })
         row.addView(key("⌫", 1.2f) { backspace() }.apply { setOnTouchListener(repeater { backspace() }) })
         row.addView(key("⏎", 1.2f) { enter() })
-        root.addView(row)
+        voice.addView(row)
 
-        refresh()
+        showVoice(false, remember = false)
         return root
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        secret = isPassword(info)
+        kb.micVisible = !secret
+        kb.previews = !secret
+        kb.enterLabel = enterLabel(info)
+        lang = Prefs(this).layout
+        kb.page = when ((info?.inputType ?: 0) and InputType.TYPE_MASK_CLASS) {
+            InputType.TYPE_CLASS_NUMBER, InputType.TYPE_CLASS_PHONE, InputType.TYPE_CLASS_DATETIME -> Layouts.symbols(lang)
+            else -> Layouts.letters(lang)
+        }
+        kb.shift = KeyboardView.Shift.OFF
+        showVoice(Prefs(this).voicePanel && !secret, remember = false)
+        updateShift()
+    }
+
+    override fun onUpdateSelection(oldSelStart: Int, oldSelEnd: Int, newSelStart: Int, newSelEnd: Int,
+                                   candidatesStart: Int, candidatesEnd: Int) {
+        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        updateShift()
+    }
+
+    private fun showVoice(on: Boolean, remember: Boolean = true) {
+        if (!on && recorder != null) cancel()
+        voice.visibility = if (on) View.VISIBLE else View.GONE
+        kb.visibility = if (on) View.GONE else View.VISIBLE
+        if (remember) Prefs(this).voicePanel = on
         refresh()
     }
 
@@ -173,6 +217,7 @@ class LocalFlowIME : InputMethodService() {
             Models.installed(this) == null -> "Open Local Flow to download a speech model"
             else -> "Hold to talk, or tap for hands-free"
         }
+        kb.status = if (pending.get() > 0) "Writing…" else message ?: ""
         (mic.background as GradientDrawable).setColor(if (recording) RED else INK)
         micIcon.setColorFilter(if (recording) INK else BG)
         if (!recording) levels.clear()
@@ -251,6 +296,105 @@ class LocalFlowIME : InputMethodService() {
         refresh()
     }
 
+    // ---------- letters ----------
+
+    override fun onKey(key: Key) {
+        when (key.kind) {
+            Key.Kind.CHAR -> type(key.text)
+            Key.Kind.SPACE -> space()
+            Key.Kind.BACK -> { backspace(); updateShift() }
+            Key.Kind.ENTER -> { enter(); updateShift() }
+            Key.Kind.SHIFT -> shiftKey()
+            Key.Kind.SYMBOLS -> kb.page = Layouts.symbols(lang)
+            Key.Kind.MORE -> kb.page = Layouts.more(lang)
+            Key.Kind.LETTERS -> { kb.page = Layouts.letters(lang); updateShift() }
+            Key.Kind.LANG -> {
+                lang = if (lang == "ar") "en" else "ar"
+                Prefs(this).layout = lang
+                kb.page = Layouts.letters(lang)
+                updateShift()
+            }
+        }
+    }
+
+    override fun onPopupText(text: String) = type(text)
+
+    override fun onLongPress(key: Key) = picker()  // the language key doubles as the globe key
+
+    override fun onMic() = showVoice(true)
+
+    override fun onCursor(steps: Int) {
+        val code = if (steps > 0) KeyEvent.KEYCODE_DPAD_RIGHT else KeyEvent.KEYCODE_DPAD_LEFT
+        repeat(kotlin.math.abs(steps)) { sendDownUpKeyEvents(code) }
+    }
+
+    private fun type(text: String) {
+        val upper = kb.shift != KeyboardView.Shift.OFF && kb.page.letters
+        commit(if (upper) text.uppercase() else text)
+        if (kb.shift == KeyboardView.Shift.ONE) kb.shift = KeyboardView.Shift.OFF
+        updateShift()
+    }
+
+    /** Space; a quick second space after a word becomes ". ". */
+    private fun space() {
+        val ic = currentInputConnection ?: return
+        val now = SystemClock.uptimeMillis()
+        val before = ic.getTextBeforeCursor(2, 0)
+        if (!secret && kb.page.letters && now - spaceAt < 400 && before != null && before.length == 2 &&
+            before[1] == ' ' && before[0].isLetterOrDigit()) {
+            ic.deleteSurroundingText(1, 0)
+            ic.commitText(". ", 1)
+            spaceAt = 0
+        } else {
+            ic.commitText(" ", 1)
+            spaceAt = now
+        }
+        updateShift()
+    }
+
+    /** Tap: next letter capital. Double-tap: caps lock. */
+    private fun shiftKey() {
+        val now = SystemClock.uptimeMillis()
+        kb.shift = when (kb.shift) {
+            KeyboardView.Shift.OFF -> { shiftAt = now; KeyboardView.Shift.ONE }
+            KeyboardView.Shift.ONE -> if (now - shiftAt < 350) KeyboardView.Shift.LOCK else KeyboardView.Shift.OFF
+            KeyboardView.Shift.LOCK -> KeyboardView.Shift.OFF
+        }
+    }
+
+    /** Capital at the start of a sentence, when the field asks for it. */
+    private fun updateShift() {
+        if (!::kb.isInitialized || kb.page !== Layouts.en || kb.shift == KeyboardView.Shift.LOCK) return
+        val info = currentInputEditorInfo
+        val ic = currentInputConnection
+        val caps = !secret && info != null && ic != null && info.inputType != 0 && ic.getCursorCapsMode(info.inputType) != 0
+        kb.shift = if (caps) KeyboardView.Shift.ONE else KeyboardView.Shift.OFF
+    }
+
+    private fun isPassword(info: EditorInfo?): Boolean {
+        val t = info?.inputType ?: return false
+        val v = t and InputType.TYPE_MASK_VARIATION
+        return when (t and InputType.TYPE_MASK_CLASS) {
+            InputType.TYPE_CLASS_TEXT -> v == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
+                v == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD || v == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD
+            InputType.TYPE_CLASS_NUMBER -> v == InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            else -> false
+        }
+    }
+
+    private fun enterLabel(info: EditorInfo?): String {
+        val o = info?.imeOptions ?: 0
+        if (multiLine() || o and EditorInfo.IME_FLAG_NO_ENTER_ACTION != 0) return "⏎"
+        return when (o and EditorInfo.IME_MASK_ACTION) {
+            EditorInfo.IME_ACTION_GO -> "Go"
+            EditorInfo.IME_ACTION_SEARCH -> "Search"
+            EditorInfo.IME_ACTION_SEND -> "Send"
+            EditorInfo.IME_ACTION_NEXT -> "Next"
+            EditorInfo.IME_ACTION_DONE -> "Done"
+            else -> "⏎"
+        }
+    }
+
     // ---------- text ----------
 
     private fun multiLine(): Boolean {
@@ -295,10 +439,6 @@ class LocalFlowIME : InputMethodService() {
         }
     }
 
-    private fun switchKeyboard() {
-        if (Build.VERSION.SDK_INT >= 28) { if (!switchToPreviousInputMethod()) picker() } else picker()
-    }
-
     private fun picker() {
         (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
     }
@@ -325,6 +465,8 @@ class LocalFlowIME : InputMethodService() {
         const val INK = 0xFFEDEAE3.toInt()
         const val MUTED = 0xFF9C978D.toInt()
         const val RED = 0xFFC8412F.toInt()
+        const val MOD = 0xFF262522.toInt()      // shift, backspace, ?123 …
+        const val PRESSED = 0xFF45433E.toInt()
     }
 }
 

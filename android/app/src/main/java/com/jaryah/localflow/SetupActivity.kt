@@ -126,7 +126,7 @@ class SetupActivity : Activity() {
         // 5. try
         col.addView(heading("5  Try it"))
         col.addView(EditText(this).apply {
-            hint = "Tap here, switch to Local Flow, hold the mic and speak"
+            hint = "Tap here, switch to Local Flow, then type, or tap the mic and speak"
             setTextColor(INK); setHintTextColor(MUTED)
             minLines = 4
             gravity = Gravity.TOP

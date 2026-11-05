@@ -2,6 +2,6 @@
 <input-method xmlns:android="http://schemas.android.com/apk/res/android"
     android:settingsActivity="com.jaryah.localflow.SetupActivity"
     android:supportsSwitchingToNextInputMethod="true">
-    <subtype android:label="Dictation" android:imeSubtypeMode="voice"
+    <subtype android:label="Local Flow" android:imeSubtypeMode="keyboard"
         android:imeSubtypeLocale="en_GB" android:isAsciiCapable="true" />
 </input-method>
