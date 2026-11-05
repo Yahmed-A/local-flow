@@ -259,6 +259,37 @@ The Windows app is `windows/app_win.py` (tray via pystray, keys via pynput, fast
 
 ---
 
+## Android
+
+On Android, Local Flow is a **voice keyboard**. Android doesn't let apps catch a hotkey or paste into other apps, so you pick Local Flow as your keyboard when you want to dictate, and switch back afterwards.
+
+### Install
+
+1. On the phone, download **LocalFlow.apk** from the [Releases page](https://github.com/Yahmed-A/local-flow/releases) (the latest `android-v…` release) and open it. Allow your browser to install apps when Android asks.
+2. Open **Local Flow** and go through the five steps: allow the microphone, turn the keyboard on, download a speech model (on Wi-Fi), pick your language, then try it in the box at the bottom.
+
+| Model | Size | Notes |
+|---|---|---|
+| Small (default) | 182 MB | Good Arabic and English, a second or two per sentence |
+| Large turbo | 548 MB | Same model as the Mac, most accurate, slower; flagship phones |
+| Base | 57 MB | Fastest, weak on Arabic |
+
+### Use it
+
+- In any text box, switch to Local Flow (the keyboard button in the navigation bar, or long-press space on Gboard).
+- **Hold the mic** and talk; let go to write. **Tap** the mic for hands-free, and tap again to finish.
+- The top-right button changes language (Mixed, English, عربي, Auto). While recording it becomes **Cancel**.
+- **ABC** goes back to your normal keyboard (long-press it for the full keyboard list).
+- Smart paragraphs, Arabic phrases, the sign-off name and the glossary all work as on the Mac. Everything runs on the phone; nothing is sent anywhere.
+
+Needs Android 8 or newer on a 64-bit ARM phone (practically every phone since 2018).
+
+### For developers
+
+The app is in `android/`: a Kotlin `InputMethodService` (`LocalFlowIME.kt`), whisper.cpp v1.7.4 through JNI (`app/src/main/cpp`), and `TextRules.kt`, a port of `formatting.py`, `arabic_phrases.py` and `clean()`. A unit test checks the port against outputs of the Python rules (`app/src/test/resources/cases.json`). If you change the Python rules, change the Kotlin too and regenerate that file. `DictationTest` runs real speech through the model on a device or emulator. Every push that touches `android/` builds it on GitHub (`.github/workflows/android.yml`); a tag like `android-v1.0.0` publishes `LocalFlow.apk`. Set the repo secrets `LF_KEYSTORE_B64` and `LF_KEYSTORE_PASSWORD` so every build is signed with the same key; otherwise phones can't update from one build to the next. To build locally: JDK 17 and the Android SDK, then `cd android && ./gradlew assembleRelease`.
+
+---
+
 ## Instructions for Claude
 
 You are setting up Local Flow on the user's Mac. Do the work yourself in the terminal; the user only needs to click things in System Settings. Keep explanations short and non-technical.
